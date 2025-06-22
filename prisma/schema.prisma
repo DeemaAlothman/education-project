@@ -1,0 +1,128 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Departments {
+  department_id Int        @id @default(autoincrement())
+  name          String
+  subjects      Subjects[]
+}
+
+enum Role {
+  superadmin
+  admin
+  doctor
+  student
+}
+
+model Users {
+  user_id       Int       @id @default(autoincrement())
+  username      String    @unique
+  phone         String?
+  password      String
+  role          Role      @default(admin)
+  academic_year Int?
+  lastLogin     DateTime?
+
+  sentMessages     Messages[]     @relation("StudentMessages")
+  receivedMessages Messages[]     @relation("DoctorMessages")
+  userSubjects     UserSubjects[]
+  exams            Exams[]        @relation("ExamsToDoctor")
+  results          Results[]
+  teachingSubjects Subjects[]     @relation("SubjectsToDoctor")
+  exam_answers     Exam_Answers[] @relation(name: "UserExamAnswers") // ← العلاقة العكسية
+
+}
+
+model Messages {
+  message_id   Int      @id @default(autoincrement())
+  student_id   Int
+  doctor_id    Int
+  message_text String
+  sent_at      DateTime @default(now())
+
+  student Users @relation("StudentMessages", fields: [student_id], references: [user_id])
+  doctor  Users @relation("DoctorMessages", fields: [doctor_id], references: [user_id])
+}
+
+model Subjects {
+  subject_id    Int    @id @default(autoincrement())
+  name          String
+  department_id Int
+  academic_year Int    @default(1)
+  doctor_id     Int?
+
+  department   Departments    @relation(fields: [department_id], references: [department_id], onDelete: Cascade)
+  doctor       Users?         @relation("SubjectsToDoctor", fields: [doctor_id], references: [user_id])
+  questions    Questions[]
+  exams        Exams[]
+  userSubjects UserSubjects[]
+}
+
+model Questions {
+  question_id    Int    @id @default(autoincrement())
+  question_text  String
+  option1        String
+  option2        String
+  option3        String
+  option4        String
+  correct_option Int    @default(1)
+  subject_id     Int
+  exam_id        Int?   // حقل اختياري لربط السؤال بامتحان
+
+  subject      Subjects       @relation(fields: [subject_id], references: [subject_id], onDelete: Cascade)
+  exam         Exams?         @relation(fields: [exam_id], references: [exam_id], onDelete: Cascade)
+  examAnswers  Exam_Answers[]
+}
+
+model Exams {
+  exam_id    Int      @id @default(autoincrement())
+  subject_id Int
+  doctor_id  Int      // حقل جديد لربط الامتحان بالدكتور
+  exam_date  DateTime
+  exam_type  String   @default("theoretical")
+
+  subject      Subjects       @relation(fields: [subject_id], references: [subject_id], onDelete: Cascade)
+  doctor       Users          @relation("ExamsToDoctor", fields: [doctor_id], references: [user_id])
+  exam_answers Exam_Answers[]
+  results      Results[]
+  questions    Questions[]    // علاقة عكسية مع Questions
+}
+
+model Exam_Answers {
+  answer_id       Int       @id @default(autoincrement())
+  exam_id         Int
+  question_id     Int
+  selected_option Int       // ✅ النوع الصحيح
+  student_id      Int
+
+  exam     Exams     @relation(fields: [exam_id], references: [exam_id], onDelete: Cascade)
+  question Questions @relation(fields: [question_id], references: [question_id], onDelete: Cascade)
+  student  Users     @relation(name: "UserExamAnswers", fields: [student_id], references: [user_id], onDelete: Cascade)
+}
+
+model Results {
+  result_id        Int    @id @default(autoincrement())
+  exam_id          Int
+  student_id       Int
+  score            Int    @default(0)
+  promotion_status String @default("not_promoted")
+
+  exam Exams @relation(fields: [exam_id], references: [exam_id], onDelete: Cascade)
+  user Users @relation(fields: [student_id], references: [user_id])
+}
+
+model UserSubjects {
+  user_id    Int
+  subject_id Int
+
+  user    Users    @relation(fields: [user_id], references: [user_id])
+  subject Subjects @relation(fields: [subject_id], references: [subject_id], onDelete: Cascade)
+
+  @@id([user_id, subject_id])
+}
