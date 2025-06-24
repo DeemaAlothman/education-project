@@ -11,6 +11,7 @@ model Departments {
   department_id Int        @id @default(autoincrement())
   name          String
   subjects      Subjects[]
+  users         Users[]
 }
 
 enum Role {
@@ -29,14 +30,16 @@ model Users {
   academic_year Int?
   lastLogin     DateTime?
 
+  department_id Int?
+  department    Departments? @relation(fields: [department_id], references: [department_id])
+
   sentMessages     Messages[]     @relation("StudentMessages")
   receivedMessages Messages[]     @relation("DoctorMessages")
   userSubjects     UserSubjects[]
   exams            Exams[]        @relation("ExamsToDoctor")
   results          Results[]
   teachingSubjects Subjects[]     @relation("SubjectsToDoctor")
-  exam_answers     Exam_Answers[] @relation(name: "UserExamAnswers") // ← العلاقة العكسية
-
+  exam_answers     Exam_Answers[] @relation(name: "UserExamAnswers")
 }
 
 model Messages {
@@ -62,6 +65,8 @@ model Subjects {
   questions    Questions[]
   exams        Exams[]
   userSubjects UserSubjects[]
+
+  @@unique([name, doctor_id])
 }
 
 model Questions {
@@ -73,17 +78,17 @@ model Questions {
   option4        String
   correct_option Int    @default(1)
   subject_id     Int
-  exam_id        Int?   // حقل اختياري لربط السؤال بامتحان
+  exam_id        Int? // حقل اختياري لربط السؤال بامتحان
 
-  subject      Subjects       @relation(fields: [subject_id], references: [subject_id], onDelete: Cascade)
-  exam         Exams?         @relation(fields: [exam_id], references: [exam_id], onDelete: Cascade)
-  examAnswers  Exam_Answers[]
+  subject     Subjects       @relation(fields: [subject_id], references: [subject_id], onDelete: Cascade)
+  exam        Exams?         @relation(fields: [exam_id], references: [exam_id], onDelete: Cascade)
+  examAnswers Exam_Answers[]
 }
 
 model Exams {
   exam_id    Int      @id @default(autoincrement())
   subject_id Int
-  doctor_id  Int      // حقل جديد لربط الامتحان بالدكتور
+  doctor_id  Int // حقل جديد لربط الامتحان بالدكتور
   exam_date  DateTime
   exam_type  String   @default("theoretical")
 
@@ -91,14 +96,14 @@ model Exams {
   doctor       Users          @relation("ExamsToDoctor", fields: [doctor_id], references: [user_id])
   exam_answers Exam_Answers[]
   results      Results[]
-  questions    Questions[]    // علاقة عكسية مع Questions
+  questions    Questions[] // علاقة عكسية مع Questions
 }
 
 model Exam_Answers {
-  answer_id       Int       @id @default(autoincrement())
+  answer_id       Int @id @default(autoincrement())
   exam_id         Int
   question_id     Int
-  selected_option Int       // ✅ النوع الصحيح
+  selected_option Int // ✅ النوع الصحيح
   student_id      Int
 
   exam     Exams     @relation(fields: [exam_id], references: [exam_id], onDelete: Cascade)

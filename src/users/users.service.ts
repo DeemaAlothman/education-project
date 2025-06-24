@@ -18,12 +18,14 @@ export class UsersService {
     return user ? new User(user) : null;
   }
 
+ 
   async create(createUserDto: {
     username: string;
     password: string;
     role: UserRole;
     academic_year?: number;
     phone?: string;
+    department_id?: number; // ← أضف هذا السطر
   }) {
     return this.prisma.users.create({ data: createUserDto });
   }

@@ -66,7 +66,6 @@ export class SubjectsController {
     return this.subjectsService.findAll();
   }
 
-
   @UseGuards(JwtAuthGuard)
   @Get('student')
   async getSubjectsForStudent(@Req() req: AuthenticatedRequest) {
@@ -83,5 +82,4 @@ export class SubjectsController {
   async getSubjectWithExams(@Param('id', ParseIntPipe) id: number) {
     return this.subjectsService.findOneWithExams(id);
   }
- 
 }

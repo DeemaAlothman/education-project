@@ -73,6 +73,7 @@ export class AuthService {
       role: UserRole.STUDENT,
       academic_year: createUserDto.academic_year,
       phone: createUserDto.phone,
+      department_id: createUserDto.department_id, // ← أضف هذا السطر
     });
   }
 
@@ -122,5 +123,11 @@ export class AuthService {
       role: UserRole.DOCTOR,
       phone: createUserDto.phone,
     });
+  }
+
+  async logout(user: any) {
+    // بشكل أساسي هنا ما في حاجة لعمل شيء لأن التوكن موجود عند العميل فقط
+    // لكن ممكن تضيف لوج أو تنفذ أي منطق آخر لو حابب
+    return { message: `User ${user.username} logged out successfully` };
   }
 }

@@ -70,4 +70,22 @@ export class DepartmentsService {
     if (!department) throw new NotFoundException('Department not found');
     return department;
   }
+
+  //جلب كل المواد
+  // departments.service.ts
+
+  async getAllDepartmentsWithDetails() {
+    return this.prisma.departments.findMany({
+      include: {
+        subjects: {
+          select: {
+            subject_id: true,
+            name: true,
+            academic_year: true,
+         
+          },
+        },
+      },
+    });
+  }
 }

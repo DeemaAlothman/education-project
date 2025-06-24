@@ -11,16 +11,28 @@ import { UpdateSubjectDto } from './dto/update-subject.dto';
 export class SubjectsService {
   constructor(private prisma: PrismaService) {}
 
+  // subjects.service.ts
   async createSubject(dto: CreateSubjectDto) {
-    // Validate doctor exists and role = doctor
     const doctor = await this.prisma.users.findUnique({
       where: { user_id: dto.doctor_id },
     });
+
     if (!doctor || doctor.role !== 'doctor') {
       throw new BadRequestException('Invalid doctor id');
     }
 
-    return this.prisma.subjects.create({
+    const existingSubject = await this.prisma.subjects.findFirst({
+      where: {
+        name: dto.name,
+        doctor_id: dto.doctor_id,
+      },
+    });
+
+    if (existingSubject) {
+      throw new BadRequestException('هذه المادة مضافة مسبقًا لهذا الدكتور');
+    }
+
+    const newSubject = await this.prisma.subjects.create({
       data: {
         name: dto.name,
         academic_year: dto.academic_year,
@@ -28,6 +40,10 @@ export class SubjectsService {
         doctor_id: dto.doctor_id,
       },
     });
+
+    console.log('✅ تمت الإضافة في قاعدة البيانات:', newSubject);
+
+    return newSubject;
   }
 
   async updateSubject(subjectId: number, dto: UpdateSubjectDto) {
@@ -80,24 +96,36 @@ export class SubjectsService {
   }
 
   //جلب مواد الطلا حسب السنة
+  // src/subjects/subjects.service.ts
+
+  // src/subjects/subjects.service.ts
+
   async getSubjectsForStudent(studentId: number) {
     const student = await this.prisma.users.findUnique({
       where: { user_id: studentId },
-      select: { academic_year: true },
+      select: { academic_year: true, department_id: true },
     });
 
-    if (!student || student.academic_year === null) {
-      throw new NotFoundException('Student academic year not found');
+    if (
+      !student || // تحقق من وجود الطالب
+      student.academic_year === null || // تحقق أن السنة غير null
+      student.department_id === null // تحقق أن القسم غير null
+    ) {
+      throw new NotFoundException(
+        'لم يتم العثور على معلومات الطالب (السنة أو القسم)',
+      );
     }
 
     const subjects = await this.prisma.subjects.findMany({
       where: {
-        academic_year: student.academic_year,
+        academic_year: student.academic_year as number,
+        department_id: student.department_id as number,
       },
     });
 
     return {
       academic_year: student.academic_year,
+      department_id: student.department_id,
       subjects,
     };
   }

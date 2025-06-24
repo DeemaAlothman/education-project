@@ -32,4 +32,39 @@ export class MessagesService {
       throw new Error('Only students and doctors can have messages');
     }
   }
+
+  // messages.service.ts
+  async getAllMessagesSentToDoctor(doctorId: number) {
+    return this.prisma.messages.findMany({
+      where: { doctor_id: doctorId },
+      include: {
+        student: {
+          select: {
+            user_id: true,
+            username: true,
+            phone: true,
+          },
+        },
+      },
+      orderBy: {
+        sent_at: 'desc',
+      },
+    });
+  }
+
+  async getAllMessagesSentByStudent(studentId: number) {
+    return this.prisma.messages.findMany({
+      where: { student_id: studentId },
+      include: {
+        doctor: {
+          select: {
+            username: true, // فقط اسم الدكتور
+          },
+        },
+      },
+      orderBy: {
+        sent_at: 'desc',
+      },
+    });
+  }
 }

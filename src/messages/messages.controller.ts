@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Get, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { UserRole } from '../users/enums/user-role.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,9 +28,17 @@ export class MessagesController {
     return this.messagesService.sendMessage(studentId, doctorId, messageText);
   }
 
-  @Get('user/:id/:role')
-  @Roles(UserRole.STUDENT, UserRole.DOCTOR)
-  getMessages(@Param('id') userId: number, @Param('role') role: UserRole) {
-    return this.messagesService.getMessagesForUser(userId, role);
+  @Get('inbox')
+  @Roles('doctor')
+  getDoctorInbox(@Request() req) {
+    const doctorId = req.user.id;
+    return this.messagesService.getAllMessagesSentToDoctor(doctorId);
+  }
+
+  @Get('student/messages')
+  @Roles('student')
+  getStudentMessages(@Request() req) {
+    const studentId = req.user.id;
+    return this.messagesService.getAllMessagesSentByStudent(studentId);
   }
 }

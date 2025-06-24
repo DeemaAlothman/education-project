@@ -16,16 +16,18 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CreateExamDto } from './dto/create-exam.dto';
-
 import { SubmitExamDto } from './dto/submit-exam.dto';
+import { Request } from 'express';
+import { Role } from '@prisma/client';
+
 interface AuthenticatedRequest extends Request {
   user: {
     id: number;
     username: string;
-    role: string;
+    role: Role; // استخدام Role من Prisma
   };
 }
-import { Request } from 'express';
+
 @Controller('exams')
 export class ExamsController {
   constructor(
@@ -49,7 +51,7 @@ export class ExamsController {
   ) {
     return this.examsService.getExamsBySubject(req.user.id, subjectId);
   }
-  //حل الاجابات من قبل الطالب لامتحان معين مع الترفع الاداري اذا تطلب
+
   @Post(':exam_id/submit')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('student')
@@ -74,10 +76,11 @@ export class ExamsController {
   }
 
   @Roles('admin')
-  @Get('reports/promotion-rate/doctor/:id')
-  async getDoctorPromotion(@Param('id', ParseIntPipe) id: number) {
-    return this.examsService.getPromotionRateByDoctor(id);
+  @Get('promotion-rate/doctor')
+  async getAllDoctorsPromotion() {
+    return this.examsService.getAllDoctorsPromotion();
   }
+
   @Get('average/:studentId/:year')
   async getStudentYearAverage(
     @Param('studentId', ParseIntPipe) studentId: number,
@@ -86,7 +89,6 @@ export class ExamsController {
     return this.examsService.getStudentAverageByYear(studentId, academicYear);
   }
 
-  // 1) جلب كل الامتحانات لمادة معينة
   @Get('subjects/:subjectId/exams')
   async getExamsBySubjectforstudent(
     @Param('subjectId', ParseIntPipe) subjectId: number,
@@ -94,12 +96,24 @@ export class ExamsController {
     return this.examsService.getExamsBySubjectforstudent(subjectId);
   }
 
-  // 2) جلب كل الأسئلة التابعة لامتحان معين
   @Get('/:examId/questions')
   async getQuestionsByExam(@Param('examId', ParseIntPipe) examId: number) {
     return this.examsService.getQuestionsByExam(examId);
   }
 
+  @Roles('admin')
+  @Get('students-subjects-scores')
+  async getStudentsSubjectsAndScores() {
+    return this.examsService.getStudentsSubjectsAndScores();
+  }
 
-
+  @Get('rankings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.superadmin, Role.admin)
+  async getStudentsRankingByDepartment(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id; // استخدام id من AuthenticatedRequest
+    const rankings =
+      await this.examsService.getStudentsRankingByDepartment(userId);
+    return rankings;
+  }
 }

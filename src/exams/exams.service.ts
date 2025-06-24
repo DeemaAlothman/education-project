@@ -40,6 +40,20 @@ export class ExamsService {
       throw new UnauthorizedException('You are not assigned to this subject');
     }
 
+    // Check if an exam already exists for the same subject and date
+    const existingExam = await this.prisma.exams.findFirst({
+      where: {
+        subject_id: dto.subject_id,
+        exam_date: new Date(dto.exam_date),
+      },
+    });
+
+    if (existingExam) {
+      throw new BadRequestException(
+        'An exam already exists for this subject on the same date',
+      );
+    }
+
     // Create exam and questions in a transaction
     return this.prisma.$transaction(async (prisma) => {
       // Create the exam
@@ -72,6 +86,7 @@ export class ExamsService {
       };
     });
   }
+
   async getExamsBySubject(userId: number, subjectId: number) {
     const user = await this.prisma.users.findUnique({
       where: { user_id: userId },
@@ -124,6 +139,7 @@ export class ExamsService {
   //الاجابة على الاسئلة من قبل الطالب
 
   async submitExam(userId: number, examId: number, dto: SubmitExamDto) {
+    console.log('Received data:', { userId, examId, dto }); // للفحص
     // 1) التأكد من أن المستخدم طالب
     const user = await this.prisma.users.findUnique({
       where: { user_id: userId },
@@ -190,41 +206,26 @@ export class ExamsService {
       }
     }
 
-    // 6) التحقق من السنة الأكاديمية (بناءً على التاريخ الحالي)
-    const currentYear = new Date().getFullYear();
-    const examYear = new Date(exam.exam_date).getFullYear();
-    const isTraining = currentYear !== examYear;
+    // 6) حساب حالة الترقية
+    const promotionStatus =
+      score >= exam.questions.length / 2 || (score >= 58 && score <= 59)
+        ? 'promoted'
+        : 'not_promoted';
 
     // 7) تخزين النتائج والإجابات
-    return this.prisma.$transaction(async (prisma) => {
+    const result = await this.prisma.$transaction(async (prisma) => {
+      const answersData = dto.answers.map((a) => ({
+        exam_id: examId,
+        question_id: a.question_id,
+        selected_option: Number(a.selected_option),
+        student_id: userId,
+      }));
+      console.log('Answers data to create:', answersData);
       await prisma.exam_Answers.createMany({
-        data: dto.answers.map((a) => ({
-          exam_id: examId,
-          question_id: a.question_id,
-          selected_option: Number(a.selected_option),
-          student_id: userId,
-        })),
+        data: answersData,
       });
 
-      if (isTraining) {
-        return {
-          exam_id: examId,
-          student_id: userId,
-          score,
-          total_questions: exam.questions.length,
-          promotion_status: 'not_saved',
-          is_training: true,
-          message:
-            'This exam is considered as training only and was not saved in results.',
-        };
-      }
-
-      const promotionStatus =
-        score >= exam.questions.length / 2 || (score >= 58 && score <= 59)
-          ? 'promoted'
-          : 'not_promoted';
-
-      const result = await prisma.results.create({
+      const createdResult = await prisma.results.create({
         data: {
           exam_id: examId,
           student_id: userId,
@@ -232,18 +233,20 @@ export class ExamsService {
           promotion_status: promotionStatus,
         },
       });
+      console.log('Created result:', createdResult);
 
-      return {
-        exam_id: examId,
-        student_id: userId,
-        score,
-        total_questions: exam.questions.length,
-        promotion_status: result.promotion_status,
-        is_training: false,
-      };
+      return createdResult;
     });
-  }
 
+    return {
+      exam_id: examId,
+      student_id: userId,
+      score,
+      total_questions: exam.questions.length,
+      promotion_status: result.promotion_status,
+      is_training: false,
+    };
+  }
   async getAverageScoresBySubject() {
     const results = await this.prisma.results.groupBy({
       by: ['exam_id'],
@@ -270,49 +273,112 @@ export class ExamsService {
   }
 
   // تم نقل هذه الدالة من الكنترولر إلى هنا
-  async getPromotionRateByDoctor(doctorId: number) {
-    // جلب المواد اللي يدرسها الدكتور
-    const subjects = await this.prisma.subjects.findMany({
-      where: { doctor_id: doctorId },
-      select: { subject_id: true },
-    });
-    const subjectIds = subjects.map((s) => s.subject_id);
+  async getAllDoctorsPromotion() {
+    // تعريف نوع العنصر داخل مصفوفة doctorPromotions
+    const doctorPromotions: {
+      doctorId: number;
+      doctorName: string;
+      subjects: string[];
+      promotionRate: number;
+      message?: string;
+    }[] = [];
 
-    if (subjectIds.length === 0) {
-      return { promotionRate: 0, message: 'No subjects found for this doctor' };
-    }
-
-    // جلب الطلاب المرتبطين بهذه المواد
-    const userSubjects = await this.prisma.userSubjects.findMany({
-      where: { subject_id: { in: subjectIds } },
-      select: { user_id: true },
-    });
-    const studentIds = userSubjects.map((us) => us.user_id);
-
-    if (studentIds.length === 0) {
-      return { promotionRate: 0, message: 'No students found for this doctor' };
-    }
-
-    // حساب عدد النتائج المرفوعة لهؤلاء الطلاب
-    const promotedCount = await this.prisma.results.count({
-      where: {
-        student_id: { in: studentIds },
-        promotion_status: 'promoted',
+    const doctors = await this.prisma.users.findMany({
+      where: { role: 'doctor' },
+      select: {
+        user_id: true,
+        username: true, // عدّلها حسب اسم الحقل اللي بيمثل اسم الدكتور
       },
     });
 
-    // عدد كل النتائج لهؤلاء الطلاب
-    const totalResults = await this.prisma.results.count({
-      where: {
-        student_id: { in: studentIds },
-      },
-    });
+    for (const doctor of doctors) {
+      const subjects = await this.prisma.subjects.findMany({
+        where: { doctor_id: doctor.user_id },
+        select: {
+          subject_id: true,
+          name: true,
+        },
+      });
 
-    const promotionRate =
-      totalResults > 0 ? (promotedCount / totalResults) * 100 : 0;
+      const subjectNames = subjects.map((s) => s.name);
+      const subjectIds = subjects.map((s) => s.subject_id);
 
-    return { promotionRate: +promotionRate.toFixed(2) };
+      if (subjectIds.length === 0) {
+        doctorPromotions.push({
+          doctorId: doctor.user_id,
+          doctorName: doctor.username,
+          subjects: [],
+          promotionRate: 0,
+          message: 'No subjects found for this doctor',
+        });
+        continue;
+      }
+
+      const exams = await this.prisma.exams.findMany({
+        where: {
+          doctor_id: doctor.user_id,
+          subject_id: { in: subjectIds },
+        },
+        select: { exam_id: true },
+      });
+
+      const examIds = exams.map((e) => e.exam_id);
+
+      if (examIds.length === 0) {
+        doctorPromotions.push({
+          doctorId: doctor.user_id,
+          doctorName: doctor.username,
+          subjects: subjectNames,
+          promotionRate: 0,
+          message: 'No exams found for this doctor',
+        });
+        continue;
+      }
+
+      const results = await this.prisma.results.findMany({
+        where: {
+          exam_id: { in: examIds },
+        },
+        select: { promotion_status: true },
+      });
+
+      if (results.length === 0) {
+        doctorPromotions.push({
+          doctorId: doctor.user_id,
+          doctorName: doctor.username,
+          subjects: subjectNames,
+          promotionRate: 0,
+          message: 'No results found for this doctor',
+        });
+        continue;
+      }
+
+      const promotedCount = results.filter(
+        (r) => r.promotion_status === 'promoted',
+      ).length;
+
+      const promotionRate = (promotedCount / results.length) * 100;
+
+      doctorPromotions.push({
+        doctorId: doctor.user_id,
+        doctorName: doctor.username,
+        subjects: subjectNames,
+        promotionRate: +promotionRate.toFixed(2),
+      });
+    }
+
+    const totalPromotionRate =
+      doctorPromotions.reduce(
+        (sum, curr) => sum + (curr.promotionRate || 0),
+        0,
+      ) / (doctorPromotions.length || 1);
+
+    return {
+      doctorPromotions,
+      overallPromotionRate: +totalPromotionRate.toFixed(2),
+    };
   }
+
   //الحصول على معدل طالب حسب سنة محددة
   async getStudentAverageByYear(studentId: number, academicYear: number) {
     // جلب كل النتائج للطالب مع فحص أن الامتحان تابع لسنة المادة المطلوبة
@@ -429,5 +495,133 @@ export class ExamsService {
     };
   }
 
-  
+  async getStudentsSubjectsAndScores() {
+    // جلب جميع الطلاب (Users مع role = student)
+    const students = await this.prisma.users.findMany({
+      where: { role: 'student' },
+      select: { user_id: true, username: true },
+    });
+
+    const studentData = await Promise.all(
+      students.map(async (student) => {
+        // جلب النتائج (العلامات) لكل طالب مع ربطها بالمواد
+        const results = await this.prisma.results.findMany({
+          where: { student_id: student.user_id },
+          include: {
+            exam: {
+              include: { subject: true }, // ربط المادة
+            },
+          },
+        });
+        console.log(`Results for student ${student.user_id}:`, results);
+
+        // التحقق من البيانات للتأكد من العلاقات وإضافة تفاصيل
+        const subjectsWithScores = results.map((result) => {
+          const exam = result.exam;
+          const subject = exam ? exam.subject : null;
+          return {
+            subjectName: subject
+              ? subject.name || 'Unknown Subject'
+              : 'No Subject',
+            score: result.score,
+            promotionStatus: result.promotion_status || 'not_taken',
+            examId: result.exam_id,
+            subjectId: exam ? exam.subject_id : null,
+            examExists: !!exam,
+            subjectExists: !!subject,
+            resultData: {
+              student_id: result.student_id,
+              exam_id: result.exam_id,
+            },
+          };
+        });
+
+        // حساب المعدل إذا فيه نتائج
+        const average =
+          subjectsWithScores.length > 0
+            ? +(
+                subjectsWithScores.reduce((sum, s) => sum + (s.score || 0), 0) /
+                subjectsWithScores.length
+              ).toFixed(2)
+            : 0;
+
+        return {
+          studentId: student.user_id,
+          username: student.username,
+          subjects: subjectsWithScores,
+          hasResults: results.length > 0,
+          average: average, // إضافة المعدل
+        };
+      }),
+    );
+
+    return { students: studentData };
+  }
+
+  //ترتيب المعدل للطلاب حسب الاعلى لكل قسم
+  async getStudentsRankingByDepartment(userId: number) {
+    // 1) التأكد من أن المستخدم أدمن
+    const user = await this.prisma.users.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!user || (user.role !== Role.superadmin && user.role !== Role.admin)) {
+      throw new UnauthorizedException('Only admins can view student rankings');
+    }
+
+    // 2) جلب الطلاب مع نتائجهم وأقسامهم
+    const students = await this.prisma.users.findMany({
+      where: { role: Role.student },
+      include: {
+        department: true,
+        results: {
+          include: {
+            exam: {
+              include: { subject: true },
+            },
+          },
+        },
+      },
+    });
+
+    // 3) حساب المعدل وحصر الترتيب حسب القسم
+    const rankingsByDepartment = {};
+    students.forEach((student) => {
+      const totalScore = student.results.reduce(
+        (sum, result) => sum + result.score,
+        0,
+      );
+      const average =
+        student.results.length > 0
+          ? +(totalScore / student.results.length).toFixed(2)
+          : 0;
+
+      const departmentId = student.department?.department_id || 'No Department';
+      if (!rankingsByDepartment[departmentId]) {
+        rankingsByDepartment[departmentId] = {
+          departmentName: student.department?.name || 'No Department',
+          students: [],
+        };
+      }
+
+      rankingsByDepartment[departmentId].students.push({
+        studentId: student.user_id,
+        username: student.username,
+        average: average,
+        resultsCount: student.results.length,
+      });
+    });
+
+    // 4) ترتيب الطلاب حسب المعدل تنازليًا لكل قسم
+    for (const departmentId in rankingsByDepartment) {
+      rankingsByDepartment[departmentId].students.sort(
+        (a, b) => b.average - a.average,
+      );
+    }
+
+    // 5) تحويل إلى مصفوفة للعودة
+    return {
+      rankings: Object.values(rankingsByDepartment),
+    };
+  }
 }

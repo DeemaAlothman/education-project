@@ -21,4 +21,8 @@ export class UpdateUserDto {
   @Min(1)
   @Max(5)
   academic_year?: number;
+
+  @IsOptional()
+  @IsInt()
+  department_id?: number;
 }

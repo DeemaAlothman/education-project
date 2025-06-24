@@ -19,4 +19,7 @@ export class CreateUserDto {
 
   @IsOptional()
   phone?: string;
+
+  @IsOptional()
+  department_id?: number;
 }

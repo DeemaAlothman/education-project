@@ -1,4 +1,3 @@
-
 // src/auth/auth.controller.ts
 import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -42,5 +41,10 @@ export class AuthController {
   @Post('create-doctor')
   createDoctor(@Body() dto: CreateUserDto, @Request() req) {
     return this.authService.createDoctor(dto, req.user);
+  }
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  logout(@Request() req) {
+    return this.authService.logout(req.user);
   }
 }

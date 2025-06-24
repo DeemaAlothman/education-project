@@ -24,17 +24,25 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+
 @Controller('departments')
 export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
 
+
+  @Get('with-subjects')
+  async getAllDepartmentsWithDetails() {
+    return this.departmentsService.getAllDepartmentsWithDetails();
+  }
+
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Get()
   async getAllDepartments() {
     return this.departmentsService.findAll();
   }
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post()
   @Roles('admin')
   async create(
@@ -44,18 +52,18 @@ export class DepartmentsController {
     console.log('DepartmentsController - req.user:', req.user);
     return this.departmentsService.create(dto);
   }
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('count')
   async getDepartmentsCount() {
     return { count: await this.departmentsService.countDepartments() };
   }
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Get(':id')
   async getOne(@Param('id', ParseIntPipe) id: number) {
     return this.departmentsService.findOne(id);
   }
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Patch(':id')
   async update(
@@ -64,16 +72,18 @@ export class DepartmentsController {
   ) {
     return this.departmentsService.update(id, dto);
   }
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Delete(':id')
   async delete(@Param('id', ParseIntPipe) id: number) {
     return this.departmentsService.delete(id);
   }
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('doctor')
   @Get(':id/subjects')
   async getDepartmentWithSubjects(@Param('id', ParseIntPipe) id: number) {
     return this.departmentsService.findOneWithSubjects(id);
   }
+
+
 }

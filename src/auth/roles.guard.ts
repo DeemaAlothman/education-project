@@ -5,40 +5,45 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from './public.decorator'; // عدل المسار حسب موقع ملف public.decorator.ts
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    // تحقق إذا الميثود أو الكنترولر معلمة بـ @Public
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true; // تجاهل التحقق من الأدوار (أي السماح)
+    }
+
     const requiredRoles = this.reflector.get<string[]>(
       'roles',
       context.getHandler(),
     );
     if (!requiredRoles) {
-      console.log('RolesGuard - No roles required, allowing access');
-      return true;
+      return true; // لا توجد أدوار مطلوبة، السماح
     }
 
     const request = context.switchToHttp().getRequest();
     const user = request.user;
-    console.log('RolesGuard - user:', user); // سجل للتصحيح
-    console.log('RolesGuard - requiredRoles:', requiredRoles); // سجل للتصحيح
 
     if (!user || !user.role) {
-      console.log('RolesGuard - No user or role found');
       throw new ForbiddenException('No user or role found');
     }
 
-    // تحويل user.role إلى سلسلة نصية وتجاهل الحالة (case-insensitive)
     const userRole =
       typeof user.role === 'string'
         ? user.role.toLowerCase()
         : user.role.toString().toLowerCase();
+
     const hasRole = requiredRoles.some(
       (role) => role.toLowerCase() === userRole,
     );
-    console.log('RolesGuard - hasRole:', hasRole); // سجل للتصحيح
 
     if (!hasRole) {
       throw new ForbiddenException('You do not have permission (roles)');
